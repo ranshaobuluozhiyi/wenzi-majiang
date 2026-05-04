@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文字麻将 - 联网版</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>文字麻将（联网）</h1>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <section class="lobby" id="lobby">
+      <h2>加入房间</h2>
+      <div class="lobby-row">
+        <label>人数
+          <select id="playerCountSelect">
+            <option value="2">2 人</option>
+            <option value="3">3 人</option>
+          </select>
+        </label>
+        <button type="button" class="primary" id="btnCreateRoom">创建房间</button>
+      </div>
+      <div class="lobby-row">
+        <label>房间号 <input type="text" id="roomCodeInput" maxlength="6" placeholder="6位" autocomplete="off" /></label>
+        <button type="button" id="btnJoinRoom">加入房间</button>
+      </div>
+      <p id="lobbyHint" class="setup-hint">创建房间后把链接或房间号发给好友；人满后自动发牌开局。</p>
+      <div id="waitingPanel" class="hidden">
+        <p><strong>房间号：</strong><code id="displayRoomId"></code>
+          <button type="button" id="btnCopyLink" class="primary">复制链接</button></p>
+        <p id="waitingText" class="setup-hint"></p>
+      </div>
+    </section>
+
+    <div class="top-bar hidden" id="topBar">
+      <span>你是 <strong id="myRoleName"></strong>（座位 <span id="mySlotNum"></span>）</span>
+      <span id="roomBadge"></span>
+    </div>
+
+    <section class="board hidden" id="gameBoard">
+      <div class="meta">
+        <div id="status"></div>
+        <div id="deckCount"></div>
+        <div id="lastDiscard"></div>
+      </div>
+
+      <div class="actions" id="turnActions"></div>
+
+      <div class="players" id="playersGrid">
+        <section class="player" id="player0"></section>
+        <section class="player" id="player1"></section>
+        <section class="player" id="player2"></section>
+      </div>
+    </section>
+  </main>
+
+  <div id="claimModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <h2>声明胡牌</h2>
+      <p id="claimPrompt"></p>
+      <div id="claimTiles" class="tiles"></div>
+      <p class="hint" id="claimHint">其他玩家请确认。</p>
+      <div class="modal-actions" id="claimActions"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="app.js"></script>
+</body>
+</html>

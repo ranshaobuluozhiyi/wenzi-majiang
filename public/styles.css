@@ -1,0 +1,294 @@
+﻿:root {
+  font-family: "Microsoft YaHei", system-ui, sans-serif;
+  color: #1f2937;
+  background: #f8fafc;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.board {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 16px;
+}
+
+.meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.players {
+  display: grid;
+  gap: 12px;
+}
+
+.players.players--2 {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+}
+
+.players.players--3 {
+  grid-template-columns: repeat(3, minmax(200px, 1fr));
+}
+
+.player {
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.player.active {
+  border-color: #2563eb;
+  box-shadow: inset 0 0 0 1px #2563eb;
+}
+
+.rows {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.hand-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 44px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 4px;
+  background: #f8fafc;
+}
+
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tiles.claim-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.claim-row {
+  margin-top: 0;
+  min-height: 0;
+  background: #f1f5f9;
+}
+
+.tile {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  min-width: 34px;
+  height: 36px;
+  padding: 0 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.tile:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hand-row.drop-target-end {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+}
+
+.tile.drop-target-left,
+.tile.drop-target-right {
+  position: relative;
+}
+
+.tile.drop-target-left::before,
+.tile.drop-target-right::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  background: #2563eb;
+  border-radius: 3px;
+}
+
+.tile.drop-target-left::before {
+  left: -4px;
+}
+
+.tile.drop-target-right::after {
+  right: -4px;
+}
+
+.row-tip {
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.setup-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.setup-label {
+  font-weight: 600;
+}
+
+.setup-label select {
+  margin-left: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+}
+
+.setup-hint {
+  color: #64748b;
+  font-size: 13px;
+}
+
+button {
+  border: 1px solid #94a3b8;
+  background: #fff;
+  border-radius: 8px;
+  height: 36px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+button.warn {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-card {
+  width: min(720px, 92vw);
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.hint {
+  color: #475569;
+  margin-top: 10px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.lobby {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.lobby h2 {
+  margin: 0 0 12px 0;
+  font-size: 1.1rem;
+}
+
+.lobby-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+#roomCodeInput {
+  width: 8rem;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.top-bar code {
+  background: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.95em;
+}
+
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #f8fafc;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 2000;
+  max-width: 90vw;
+  display: none;
+}
+
+#toast.show {
+  display: block;
+}
