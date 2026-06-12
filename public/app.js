@@ -62,14 +62,19 @@ function getMobileVisibleSlot() {
   return mySlot ?? 0;
 }
 
-/** 桌面端：当前回合玩家在左，其余按顺时针 */
+/** 桌面端：「我」始终在左，其余按座位号 */
 function getDesktopPanelOrder() {
-  if (!gameState) return [0, 1, 2];
-  const n = gameState.playerCount;
-  const turn = gameState.turn;
-  const order = [turn];
-  for (let i = 1; i < n; i++) order.push((turn + i) % n);
+  if (!gameState || mySlot === null) return [0, 1, 2];
+  const order = [mySlot];
+  for (let i = 0; i < gameState.playerCount; i++) {
+    if (i !== mySlot) order.push(i);
+  }
   return order;
+}
+
+/** 手机端切换键：「我」在最左，对手依次在右 */
+function getMobileToggleOrder() {
+  return getDesktopPanelOrder();
 }
 
 function toast(msg) {
@@ -280,7 +285,7 @@ function renderPlayerViewToggle() {
   bar.innerHTML = "";
   const visible = getMobileVisibleSlot();
 
-  gameState.players.forEach((_, idx) => {
+  getMobileToggleOrder().forEach((idx) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "player-view-btn";
