@@ -8,6 +8,10 @@ const socket = io({ transports: ["websocket", "polling"] });
 let gameState = null;
 let mySlot = null;
 let roomId = null;
+/** 手机端当前查看的玩家座位；null 表示默认看自己 */
+let mobileFocusedSlot = null;
+
+const MOBILE_BREAKPOINT = "(max-width: 768px)";
 
 const POINTER_DRAG_THRESHOLD = 10;
 
@@ -27,6 +31,45 @@ const drag = {
 
 function $(id) {
   return document.getElementById(id);
+}
+
+function isMobileLayout() {
+  return window.matchMedia(MOBILE_BREAKPOINT).matches;
+}
+
+/** 相对当前客户端：自己为「我」，其他为「对手」 */
+function displayName(playerIdx) {
+  if (playerIdx === mySlot) return "我";
+  if (!gameState || gameState.playerCount === 2) return "对手";
+  let n = 0;
+  for (let i = 0; i < gameState.players.length; i++) {
+    if (i === mySlot) continue;
+    n += 1;
+    if (i === playerIdx) return `对手${n}`;
+  }
+  return "对手";
+}
+
+function getMobileVisibleSlot() {
+  if (
+    mobileFocusedSlot !== null &&
+    gameState &&
+    mobileFocusedSlot >= 0 &&
+    mobileFocusedSlot < gameState.playerCount
+  ) {
+    return mobileFocusedSlot;
+  }
+  return mySlot ?? 0;
+}
+
+/** 桌面端：当前回合玩家在左，其余按顺时针 */
+function getDesktopPanelOrder() {
+  if (!gameState) return [0, 1, 2];
+  const n = gameState.playerCount;
+  const turn = gameState.turn;
+  const order = [turn];
+  for (let i = 1; i < n; i++) order.push((turn + i) % n);
+  return order;
 }
 
 function toast(msg) {
@@ -206,12 +249,53 @@ function computeReorderAfterDrop(handRows, fromRow, fromIdx, toRow, tileIdx, dro
 function syncPlayersGrid() {
   const grid = $("playersGrid");
   if (!grid || !gameState) return;
-  grid.classList.remove("players--2", "players--3");
+  const mobile = isMobileLayout();
+  grid.classList.remove("players--2", "players--3", "players--mobile-single");
   grid.classList.add(gameState.playerCount === 3 ? "players--3" : "players--2");
+  if (mobile) grid.classList.add("players--mobile-single");
+
   const p2 = $("player2");
   if (p2) {
     p2.style.display = gameState.playerCount >= 3 ? "" : "none";
   }
+
+  const order = mobile ? [...Array(gameState.playerCount).keys()] : getDesktopPanelOrder();
+  for (const idx of order) {
+    const el = $(`player${idx}`);
+    if (el) grid.appendChild(el);
+  }
+}
+
+function renderPlayerViewToggle() {
+  const bar = $("playerViewToggle");
+  if (!bar) return;
+  const mobile = isMobileLayout();
+  if (!mobile || !gameState) {
+    bar.classList.add("hidden");
+    bar.innerHTML = "";
+    return;
+  }
+
+  bar.classList.remove("hidden");
+  bar.innerHTML = "";
+  const visible = getMobileVisibleSlot();
+
+  gameState.players.forEach((_, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "player-view-btn";
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", idx === visible ? "true" : "false");
+    const isMe = idx === mySlot;
+    if (isMe) btn.classList.add("player-view-btn--me");
+    if (idx === visible) btn.classList.add("player-view-btn--active");
+    btn.textContent = isMe ? "我的手牌" : `看${displayName(idx)}`;
+    btn.onclick = () => {
+      mobileFocusedSlot = idx;
+      renderPlayers();
+    };
+    bar.appendChild(btn);
+  });
 }
 
 function canReorderHand(playerIndex) {
@@ -285,9 +369,7 @@ function updateChrome() {
     if (topBar) topBar.classList.remove("hidden");
     if (mySlot !== null && gameState.players[mySlot]) {
       const elName = $("myRoleName");
-      const elNum = $("mySlotNum");
-      if (elName) elName.textContent = gameState.players[mySlot].name;
-      if (elNum) elNum.textContent = String(mySlot);
+      if (elName) elName.textContent = "我";
     }
     const badge = $("roomBadge");
     if (badge && roomId) badge.textContent = `房间 ${roomId}`;
@@ -357,6 +439,10 @@ function renderActions() {
 function renderPlayers() {
   if (!gameState) return;
   syncPlayersGrid();
+  renderPlayerViewToggle();
+
+  const mobile = isMobileLayout();
+  const mobileVisible = getMobileVisibleSlot();
 
   gameState.players.forEach((player, idx) => {
     const el = $(`player${idx}`);
@@ -372,11 +458,15 @@ function renderPlayers() {
       !gameState.claim &&
       gameState.winner === null;
 
-    const header = `<h3>${player.name}${active ? "（当前回合）" : ""}</h3>
+    const label = displayName(idx);
+    const header = `<h3>${label}${active ? "（当前回合）" : ""}</h3>
       <div>手牌：${getHandCount(player)} 张</div>
       <div class="row-tip">8 条横排可自由拖拽分类</div>`;
 
-    el.className = `player${active ? " active" : ""}`;
+    el.className = "player";
+    if (active) el.classList.add("active");
+    if (idx === mySlot) el.classList.add("player--me");
+    if (mobile && idx !== mobileVisible) el.classList.add("player--hidden-mobile");
     el.innerHTML = header;
 
     const rowsWrap = document.createElement("div");
@@ -433,11 +523,11 @@ function renderClaimModal() {
   }
 
   const c = gameState.claim;
-  const claimerName = gameState.players[c.claimer].name;
+  const claimerName = displayName(c.claimer);
   const { confirmerIndices, approved } = c;
   const need = confirmerIndices.length;
   const done = approved.length;
-  const names = confirmerIndices.map((i) => gameState.players[i].name).join("、");
+  const names = confirmerIndices.map((i) => displayName(i)).join("、");
 
   if (prompt) {
     prompt.textContent = `${claimerName} 已声明胡牌，请 ${names} 分别点击确认（${done}/${need} 已同意）。`;
@@ -484,7 +574,7 @@ function renderClaimModal() {
     for (const ci of confirmerIndices) {
       const okBtn = document.createElement("button");
       okBtn.className = "primary";
-      const pname = gameState.players[ci].name;
+      const pname = displayName(ci);
       const already = approved.includes(ci);
       okBtn.textContent = already ? `${pname} 已确认 ✓` : `${pname} 确认胡牌`;
       okBtn.disabled = already || mySlot !== ci;
@@ -514,21 +604,21 @@ function renderMeta() {
   }
 
   if (gameState.winner !== null) {
-    status.textContent = `本局结束：${gameState.players[gameState.winner].name} 胡牌成功。`;
+    status.textContent = `本局结束：${displayName(gameState.winner)} 胡牌成功。`;
   } else if (gameState.claim) {
     const cc = gameState.claim;
     const done = cc.approved.length;
     const need = cc.confirmerIndices.length;
-    status.textContent = `${gameState.players[cc.claimer].name} 声明胡牌，等待确认（${done}/${need}）。`;
+    status.textContent = `${displayName(cc.claimer)} 声明胡牌，等待确认（${done}/${need}）。`;
   } else {
     const phaseText = gameState.phase === "draw" ? "摸牌阶段" : "出牌阶段";
-    status.textContent = `当前：${gameState.players[gameState.turn].name}（${phaseText}）`;
+    status.textContent = `当前：${displayName(gameState.turn)}（${phaseText}）`;
   }
 
   if (deckCount) deckCount.textContent = `牌堆剩余：${gameState.deck.length}`;
   if (lastDiscard) {
     if (gameState.lastDiscard) {
-      lastDiscard.textContent = `最近弃牌：${gameState.lastDiscard.tile}（来自 ${gameState.players[gameState.lastDiscard.from].name}）`;
+      lastDiscard.textContent = `最近弃牌：${gameState.lastDiscard.tile}（来自 ${displayName(gameState.lastDiscard.from)}）`;
     } else {
       lastDiscard.textContent = "最近弃牌：暂无";
     }
@@ -558,11 +648,8 @@ function showWaitingUI() {
   if (waiting) waiting.classList.remove("hidden");
   if (topBar && mySlot !== null) {
     topBar.classList.remove("hidden");
-    const labels = ["玩家A", "玩家B", "玩家C"];
     const elName = $("myRoleName");
-    const elNum = $("mySlotNum");
-    if (elName) elName.textContent = labels[mySlot] || `玩家${mySlot}`;
-    if (elNum) elNum.textContent = String(mySlot);
+    if (elName) elName.textContent = "我";
     const badge = $("roomBadge");
     if (badge && roomId) badge.textContent = `房间 ${roomId}`;
   }
@@ -578,6 +665,7 @@ function wireLobby() {
       }
       roomId = res.roomId;
       mySlot = res.slot;
+      mobileFocusedSlot = null;
       gameState = null;
       showWaitingUI();
       $("lobbyHint")?.classList.add("hidden");
@@ -597,6 +685,7 @@ function wireLobby() {
       }
       roomId = res.roomId;
       mySlot = res.slot;
+      mobileFocusedSlot = null;
       gameState = res.state || null;
       $("lobbyHint")?.classList.add("hidden");
       if (gameState) {
@@ -645,6 +734,7 @@ socket.on("connect", () => {
       }
       roomId = res.roomId;
       mySlot = res.slot;
+      mobileFocusedSlot = null;
       gameState = res.state || null;
       $("lobbyHint")?.classList.add("hidden");
       if ($("roomCodeInput")) $("roomCodeInput").value = roomId || "";
@@ -659,3 +749,11 @@ socket.on("connect", () => {
 });
 
 wireLobby();
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (gameState) render();
+  }, 120);
+});
