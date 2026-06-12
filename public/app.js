@@ -9,11 +9,20 @@ let gameState = null;
 let mySlot = null;
 let roomId = null;
 
+const POINTER_DRAG_THRESHOLD = 10;
+
 const drag = {
   fromPlayer: null,
   fromRow: null,
   fromIndex: null,
   insertAfter: false,
+  /** 触屏 / 指针拖放（替代手机不支持的 HTML5 drag） */
+  pointerId: null,
+  pointerActive: false,
+  pointerMoved: false,
+  startX: 0,
+  startY: 0,
+  suppressClick: false,
 };
 
 function $(id) {
@@ -38,6 +47,130 @@ function clearDragState() {
   drag.fromRow = null;
   drag.fromIndex = null;
   drag.insertAfter = false;
+  drag.pointerId = null;
+  drag.pointerActive = false;
+  drag.pointerMoved = false;
+  drag.startX = 0;
+  drag.startY = 0;
+}
+
+function findReorderTargetAt(playerIdx, clientX, clientY) {
+  const el = document.elementFromPoint(clientX, clientY);
+  if (!el) return null;
+  let node = el;
+  for (let depth = 0; depth < 16 && node; depth++, node = node.parentElement) {
+    const ds = node.dataset;
+    if (!ds || ds.reorderPlayer === undefined) continue;
+    const p = parseInt(ds.reorderPlayer, 10);
+    if (p !== playerIdx) continue;
+    const r = parseInt(ds.reorderRow, 10);
+    if (Number.isNaN(r)) continue;
+    if (ds.reorderCol !== undefined) {
+      const c = parseInt(ds.reorderCol, 10);
+      if (Number.isNaN(c)) continue;
+      const rect = node.getBoundingClientRect();
+      const insertAfter = clientX > rect.left + rect.width / 2;
+      return { kind: "tile", row: r, col: c, insertAfter };
+    }
+    if (node.classList?.contains("hand-row")) {
+      return { kind: "row", row: r };
+    }
+  }
+  return null;
+}
+
+function updatePointerHighlight(playerIdx, clientX, clientY) {
+  clearDropHighlights(playerIdx);
+  const t = findReorderTargetAt(playerIdx, clientX, clientY);
+  if (!t) return;
+  const playerEl = $(`player${playerIdx}`);
+  if (!playerEl) return;
+  const rowEls = playerEl.querySelectorAll(".rows .hand-row");
+  const rowEl = rowEls[t.row];
+  if (!rowEl) return;
+  if (t.kind === "row") {
+    rowEl.classList.add("drop-target-end");
+    return;
+  }
+  const btns = rowEl.querySelectorAll("button.tile");
+  const btn = btns[t.col];
+  if (!btn) return;
+  btn.classList.add(t.insertAfter ? "drop-target-right" : "drop-target-left");
+}
+
+function applyDropFromPoint(playerIdx, clientX, clientY) {
+  const t = findReorderTargetAt(playerIdx, clientX, clientY);
+  if (!t) return;
+  if (t.kind === "row") {
+    handleDrop(playerIdx, t.row, 0, true, false);
+  } else {
+    handleDrop(playerIdx, t.row, t.col, false, t.insertAfter);
+  }
+}
+
+function bindPointerReorder(btn, idx, rowIndex, tileIndex, canReorder, canDiscard) {
+  btn.onpointerdown = (e) => {
+    if (!canReorder) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    drag.pointerActive = true;
+    drag.pointerMoved = false;
+    drag.pointerId = e.pointerId;
+    drag.startX = e.clientX;
+    drag.startY = e.clientY;
+    drag.fromPlayer = idx;
+    drag.fromRow = rowIndex;
+    drag.fromIndex = tileIndex;
+    try {
+      btn.setPointerCapture(e.pointerId);
+    } catch (_) {
+      /* ignore */
+    }
+  };
+
+  btn.onpointermove = (e) => {
+    if (!drag.pointerActive || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (Math.abs(dx) + Math.abs(dy) > POINTER_DRAG_THRESHOLD) {
+      drag.pointerMoved = true;
+    }
+    if (drag.pointerMoved) {
+      e.preventDefault();
+      updatePointerHighlight(idx, e.clientX, e.clientY);
+    }
+  };
+
+  const endPointer = (e) => {
+    if (!drag.pointerActive || e.pointerId !== drag.pointerId) return;
+    drag.pointerActive = false;
+    const moved = drag.pointerMoved;
+    const pid = drag.pointerId;
+    drag.pointerId = null;
+    drag.pointerMoved = false;
+    try {
+      btn.releasePointerCapture(pid);
+    } catch (_) {
+      /* ignore */
+    }
+    clearDropHighlights(idx);
+    if (moved) {
+      e.preventDefault();
+      drag.suppressClick = true;
+      window.setTimeout(() => {
+        drag.suppressClick = false;
+      }, 350);
+      applyDropFromPoint(idx, e.clientX, e.clientY);
+    }
+    clearDragState();
+  };
+
+  btn.onpointerup = endPointer;
+  btn.onpointercancel = endPointer;
+
+  btn.onclick = () => {
+    if (drag.suppressClick) return;
+    if (canDiscard) discardTile(idx, rowIndex, tileIndex);
+  };
 }
 
 function clearDropHighlights(playerIndex) {
@@ -252,75 +385,27 @@ function renderPlayers() {
     for (let rowIndex = 0; rowIndex < ROW_COUNT; rowIndex++) {
       const rowEl = document.createElement("div");
       rowEl.className = "hand-row";
-
-      rowEl.ondragover = (event) => {
-        if (!canReorder || drag.fromPlayer !== idx) return;
-        if (event.target !== rowEl) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        clearDropHighlights(idx);
-        rowEl.classList.add("drop-target-end");
-      };
-
-      rowEl.ondrop = (event) => {
-        if (!canReorder) return;
-        if (event.target !== rowEl) return;
-        event.preventDefault();
-        handleDrop(idx, rowIndex, 0, true, false);
-      };
-
-      rowEl.ondragleave = (event) => {
-        if (!canReorder) return;
-        const related = event.relatedTarget;
-        if (related && rowEl.contains(related)) return;
-        rowEl.classList.remove("drop-target-end");
-      };
+      rowEl.dataset.reorderPlayer = String(idx);
+      rowEl.dataset.reorderRow = String(rowIndex);
 
       const rowTiles = player.handRows[rowIndex];
       rowTiles.forEach((tile, tileIndex) => {
         const btn = document.createElement("button");
         btn.className = "tile";
+        btn.dataset.reorderPlayer = String(idx);
+        btn.dataset.reorderRow = String(rowIndex);
+        btn.dataset.reorderCol = String(tileIndex);
 
         btn.textContent = tile;
-        btn.title = canDiscard ? "点击打出；也可拖拽调整顺序" : canReorder ? "拖拽调整顺序" : "非你的操作回合";
+        btn.title = canDiscard
+          ? "点一下打出；按住拖动可调整顺序（手机同样）"
+          : canReorder
+            ? "按住拖动调整顺序（手机同样）"
+            : "非你的操作回合";
         btn.disabled = !canReorder;
-        btn.draggable = canReorder;
+        btn.draggable = false;
 
-        btn.onclick = () => {
-          if (canDiscard) discardTile(idx, rowIndex, tileIndex);
-        };
-
-        btn.ondragstart = (event) => {
-          if (!canReorder) return;
-          drag.fromPlayer = idx;
-          drag.fromRow = rowIndex;
-          drag.fromIndex = tileIndex;
-          event.dataTransfer.effectAllowed = "move";
-        };
-
-        btn.ondragover = (event) => {
-          if (!canReorder || drag.fromPlayer !== idx) return;
-          event.preventDefault();
-          event.stopPropagation();
-          event.dataTransfer.dropEffect = "move";
-          const rect = btn.getBoundingClientRect();
-          const insertAfter = event.clientX > rect.left + rect.width / 2;
-          drag.insertAfter = insertAfter;
-          clearDropHighlights(idx);
-          btn.classList.add(insertAfter ? "drop-target-right" : "drop-target-left");
-        };
-
-        btn.ondrop = (event) => {
-          if (!canReorder) return;
-          event.preventDefault();
-          event.stopPropagation();
-          handleDrop(idx, rowIndex, tileIndex, false, drag.insertAfter);
-        };
-
-        btn.ondragend = () => {
-          clearDropHighlights(idx);
-          clearDragState();
-        };
+        bindPointerReorder(btn, idx, rowIndex, tileIndex, canReorder, canDiscard);
 
         rowEl.appendChild(btn);
       });
