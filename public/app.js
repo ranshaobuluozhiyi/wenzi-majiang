@@ -710,7 +710,9 @@ function renderPlayers() {
       gameState.winner === null;
 
     const label = displayName(idx);
-    const turnBadge = active ? ` <span class="turn-badge">当前回合</span>${getDiscardHintHtml()}` : "";
+    const turnBadge = active
+      ? ` <span class="turn-badge">当前回合</span>${idx === mySlot ? getDiscardHintHtml() : ""}`
+      : "";
     const header = `<h3>${label}${turnBadge}</h3>
       <div>手牌：${getHandCount(player)} 张</div>
       <div class="row-tip">8 条横排可自由拖拽分类</div>`;
