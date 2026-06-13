@@ -10,6 +10,8 @@ let mySlot = null;
 let roomId = null;
 let roomReady = false;
 let pendingAction = null;
+/** 已自动摸牌请求的回合标记，避免重复发送 */
+let lastAutoDrawKey = null;
 /** 手机端当前查看的玩家座位；回合变化时自动跟随当前操作者 */
 let mobileFocusedSlot = null;
 let lastSyncedTurn = null;
@@ -108,6 +110,7 @@ function clearSession() {
   gameState = null;
   roomReady = false;
   pendingAction = null;
+  lastAutoDrawKey = null;
   persistSession();
 }
 
@@ -438,11 +441,105 @@ function canReorderHand(playerIndex) {
   );
 }
 
+function getDrawPhaseContext() {
+  if (!gameState || mySlot === null) {
+    return {
+      awaitingCard: false,
+      canDraw: false,
+      canEat: false,
+      drawPreview: null,
+      eatPreview: null,
+      showChoice: false,
+    };
+  }
+  const active = gameState.players[gameState.turn];
+  const n = gameState.players.length;
+  const xiajiaTurn = gameState.lastDiscard ? (gameState.lastDiscard.from + 1) % n : null;
+  const canAct = mySlot === gameState.turn;
+  const awaitingCard = canAct && gameState.phase === "draw" && getHandCount(active) === 13;
+  const canDraw = awaitingCard && gameState.deck.length > 0;
+  const canEat =
+    awaitingCard &&
+    !!gameState.lastDiscard &&
+    gameState.lastDiscard.from !== gameState.turn &&
+    gameState.turn === xiajiaTurn;
+  const drawPreview = canDraw ? gameState.deck[gameState.deck.length - 1] : null;
+  const eatPreview = canEat ? gameState.lastDiscard.tile : null;
+  return {
+    awaitingCard,
+    canDraw,
+    canEat,
+    drawPreview,
+    eatPreview,
+    showChoice: canDraw && canEat,
+  };
+}
+
+function maybeAutoDraw() {
+  if (!gameState || mySlot === null || !roomReady) return;
+  const ctx = getDrawPhaseContext();
+  if (!ctx.awaitingCard || !ctx.canDraw || ctx.canEat) return;
+
+  const key = `${gameState.turn}-${gameState.deck.length}-${gameState.lastDiscard?.tile ?? ""}`;
+  if (lastAutoDrawKey === key) return;
+  lastAutoDrawKey = key;
+  emitAction({ type: "DRAW" });
+}
+
+function buildDrawChoiceUI(el, ctx) {
+  el.innerHTML = "";
+  el.className = "actions actions--draw-choice";
+  el.dataset.mode = "draw-choice";
+
+  const bar = document.createElement("div");
+  bar.className = "draw-choice-bar";
+
+  const hint = document.createElement("p");
+  hint.className = "draw-choice-hint";
+  hint.textContent = "选择获得的牌";
+  bar.appendChild(hint);
+
+  const opts = document.createElement("div");
+  opts.className = "draw-choice-options";
+
+  const drawOpt = document.createElement("button");
+  drawOpt.type = "button";
+  drawOpt.className = "draw-choice-opt draw-choice-opt--default";
+  drawOpt.innerHTML = `<span class="draw-choice-label">A · 摸牌</span><span class="draw-choice-tile">${ctx.drawPreview}</span>`;
+  bindActionTap(drawOpt, drawTile);
+  opts.appendChild(drawOpt);
+
+  const eatOpt = document.createElement("button");
+  eatOpt.type = "button";
+  eatOpt.className = "draw-choice-opt";
+  eatOpt.innerHTML = `<span class="draw-choice-label">B · 吃牌</span><span class="draw-choice-tile">${ctx.eatPreview}</span>`;
+  bindActionTap(eatOpt, eatDiscard);
+  opts.appendChild(eatOpt);
+
+  bar.appendChild(opts);
+  el.appendChild(bar);
+}
+
+function buildDiscardActionsUI(el) {
+  el.innerHTML = "";
+  el.className = "actions";
+  el.dataset.mode = "discard";
+
+  const huBtn = document.createElement("button");
+  huBtn.dataset.role = "hu";
+  huBtn.className = "warn";
+  huBtn.textContent = "声明胡牌";
+  bindActionTap(huBtn, declareHu);
+  el.appendChild(huBtn);
+}
+
 function drawTile() {
+  lastAutoDrawKey = null;
   emitAction({ type: "DRAW" });
 }
 
 function eatDiscard() {
+  lastAutoDrawKey = null;
   emitAction({ type: "EAT" });
 }
 
@@ -510,12 +607,10 @@ function renderActions() {
   const el = $("turnActions");
   if (!el || !gameState) return;
 
-  const isMe = (i) => i === mySlot;
-  const canAct = (i) => isMe(i) && i === gameState.turn;
-
   if (gameState.winner !== null) {
     if (el.dataset.mode !== "winner") {
       el.innerHTML = "";
+      el.className = "actions";
       el.dataset.mode = "winner";
       const btn = document.createElement("button");
       btn.className = "primary";
@@ -529,72 +624,74 @@ function renderActions() {
   if (gameState.claim) {
     if (el.dataset.mode !== "claim") {
       el.innerHTML = "";
+      el.className = "actions";
       el.dataset.mode = "claim";
     }
     return;
   }
 
-  if (el.dataset.mode !== "turn") {
-    el.innerHTML = "";
-    el.dataset.mode = "turn";
-    const drawBtn = document.createElement("button");
-    drawBtn.dataset.role = "draw";
-    drawBtn.textContent = "摸牌";
-    bindActionTap(drawBtn, drawTile);
-    el.appendChild(drawBtn);
+  const ctx = getDrawPhaseContext();
+  const canDiscardPhase =
+    mySlot === gameState.turn &&
+    gameState.phase === "discard" &&
+    getHandCount(gameState.players[mySlot]) === 14;
 
-    const eatBtn = document.createElement("button");
-    eatBtn.dataset.role = "eat";
-    bindActionTap(eatBtn, eatDiscard);
-    el.appendChild(eatBtn);
-
-    const huBtn = document.createElement("button");
-    huBtn.dataset.role = "hu";
-    huBtn.className = "warn";
-    huBtn.textContent = "声明胡牌";
-    bindActionTap(huBtn, declareHu);
-    el.appendChild(huBtn);
+  if (ctx.showChoice) {
+    if (el.dataset.mode !== "draw-choice") {
+      buildDrawChoiceUI(el, ctx);
+    } else {
+      const tiles = el.querySelectorAll(".draw-choice-tile");
+      const labels = el.querySelectorAll(".draw-choice-label");
+      if (tiles[0]) tiles[0].textContent = ctx.drawPreview;
+      if (tiles[1]) tiles[1].textContent = ctx.eatPreview;
+      if (labels[0]) labels[0].textContent = "A · 摸牌";
+      if (labels[1]) labels[1].textContent = "B · 吃牌";
+    }
+    return;
   }
 
-  const drawBtn = el.querySelector('[data-role="draw"]');
-  const eatBtn = el.querySelector('[data-role="eat"]');
-  const huBtn = el.querySelector('[data-role="hu"]');
-  if (!drawBtn || !eatBtn || !huBtn) return;
+  if (ctx.canEat && !ctx.canDraw) {
+    if (el.dataset.mode !== "eat-only") {
+      el.innerHTML = "";
+      el.className = "actions actions--draw-choice";
+      el.dataset.mode = "eat-only";
+      const bar = document.createElement("div");
+      bar.className = "draw-choice-bar";
+      const hint = document.createElement("p");
+      hint.className = "draw-choice-hint";
+      hint.textContent = "选择获得的牌";
+      bar.appendChild(hint);
+      const opts = document.createElement("div");
+      opts.className = "draw-choice-options";
+      const eatOpt = document.createElement("button");
+      eatOpt.type = "button";
+      eatOpt.className = "draw-choice-opt draw-choice-opt--default";
+      eatOpt.innerHTML = `<span class="draw-choice-label">B · 吃牌</span><span class="draw-choice-tile">${ctx.eatPreview}</span>`;
+      bindActionTap(eatOpt, eatDiscard);
+      opts.appendChild(eatOpt);
+      bar.appendChild(opts);
+      el.appendChild(bar);
+    } else {
+      const tile = el.querySelector(".draw-choice-tile");
+      if (tile) tile.textContent = ctx.eatPreview;
+    }
+    return;
+  }
 
-  const active = gameState.players[gameState.turn];
-  const n = gameState.players.length;
-  const xiajiaTurn = gameState.lastDiscard ? (gameState.lastDiscard.from + 1) % n : null;
-  const canEat =
-    canAct(gameState.turn) &&
-    gameState.phase === "draw" &&
-    gameState.lastDiscard &&
-    gameState.lastDiscard.from !== gameState.turn &&
-    gameState.turn === xiajiaTurn &&
-    getHandCount(active) === 13;
+  if (canDiscardPhase) {
+    if (el.dataset.mode !== "discard") {
+      buildDiscardActionsUI(el);
+    }
+    const huBtn = el.querySelector('[data-role="hu"]');
+    if (huBtn) huBtn.disabled = false;
+    return;
+  }
 
-  drawBtn.disabled = !(
-    canAct(gameState.turn) &&
-    gameState.phase === "draw" &&
-    getHandCount(active) === 13 &&
-    gameState.deck.length > 0
-  );
-
-  const awaitingCard =
-    canAct(gameState.turn) && gameState.phase === "draw" && getHandCount(active) === 13;
-  drawBtn.classList.toggle("action-hint-pulse", awaitingCard && !drawBtn.disabled);
-  drawBtn.classList.toggle("action-hint-pulse--muted", awaitingCard && drawBtn.disabled);
-
-  eatBtn.textContent = gameState.lastDiscard ? `吃牌（${gameState.lastDiscard.tile}）` : "吃牌";
-  eatBtn.disabled = !canEat;
-  eatBtn.title = n >= 3 ? "仅「上一手弃牌者的下家」可吃" : "";
-  eatBtn.classList.toggle("action-hint-pulse", awaitingCard && !eatBtn.disabled);
-  eatBtn.classList.toggle("action-hint-pulse--muted", awaitingCard && eatBtn.disabled);
-
-  huBtn.disabled = !(
-    canAct(gameState.turn) &&
-    gameState.phase === "discard" &&
-    getHandCount(active) === 14
-  );
+  if (el.dataset.mode !== "idle") {
+    el.innerHTML = "";
+    el.className = "actions";
+    el.dataset.mode = "idle";
+  }
 }
 
 function renderPlayers() {
@@ -794,7 +891,7 @@ function renderMeta() {
     if (playTips) {
       playTips.classList.remove("hidden");
       playTips.innerHTML =
-        `<div class="play-tip">每回合获得一张牌（摸或吃）变为 14 张，然后 出一张牌 或 声明胡牌。</div>`;
+        `<div class="play-tip">每回合获得一张牌（摸或吃）变为 14 张，然后 点击一张牌出掉 或 声明胡牌。</div>`;
     }
   }
 }
@@ -879,6 +976,7 @@ function wireLobby() {
 socket.on("state", (s) => {
   gameState = s;
   syncMobileViewToTurn();
+  maybeAutoDraw();
   updateChrome();
   render();
 });
