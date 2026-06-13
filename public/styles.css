@@ -113,6 +113,8 @@ body {
   border-radius: 6px;
   background: #fff;
   font-size: 16px;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .players {
@@ -296,6 +298,17 @@ body {
   cursor: pointer;
   font-size: 16px;
   transition: box-shadow 0.12s ease, border-color 0.12s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.is-reordering {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.is-reordering .tile {
+  cursor: grabbing;
 }
 
 .tile:disabled {

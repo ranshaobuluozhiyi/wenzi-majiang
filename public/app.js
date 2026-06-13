@@ -300,7 +300,15 @@ function applyDropFromPoint(playerIdx, clientX, clientY) {
   }
 }
 
+function setReorderDragging(on) {
+  document.body.classList.toggle("is-reordering", on);
+}
+
 function bindPointerReorder(btn, idx, rowIndex, tileIndex, canReorder, canDiscard) {
+  btn.onselectstart = (e) => {
+    if (canReorder) e.preventDefault();
+  };
+
   btn.onpointerdown = (e) => {
     if (!canReorder) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -324,10 +332,12 @@ function bindPointerReorder(btn, idx, rowIndex, tileIndex, canReorder, canDiscar
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
     if (Math.abs(dx) + Math.abs(dy) > POINTER_DRAG_THRESHOLD) {
+      if (!drag.pointerMoved) setReorderDragging(true);
       drag.pointerMoved = true;
     }
     if (drag.pointerMoved) {
       e.preventDefault();
+      window.getSelection()?.removeAllRanges();
       updatePointerHighlight(idx, e.clientX, e.clientY);
     }
   };
@@ -345,6 +355,7 @@ function bindPointerReorder(btn, idx, rowIndex, tileIndex, canReorder, canDiscar
       /* ignore */
     }
     clearDropHighlights(idx);
+    setReorderDragging(false);
     if (moved) {
       e.preventDefault();
       drag.suppressClick = true;
