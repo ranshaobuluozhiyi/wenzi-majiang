@@ -478,7 +478,7 @@ function buildDrawChoiceUI(el, ctx) {
 
   const drawOpt = document.createElement("button");
   drawOpt.type = "button";
-  drawOpt.className = "draw-choice-opt draw-choice-opt--default";
+  drawOpt.className = "draw-choice-opt";
   drawOpt.innerHTML = `<span class="draw-choice-label">A · 摸牌</span><span class="draw-choice-tile">${ctx.drawPreview}</span>`;
   bindActionTap(drawOpt, drawTile);
   opts.appendChild(drawOpt);
@@ -640,7 +640,7 @@ function renderActions() {
       opts.className = "draw-choice-options";
       const eatOpt = document.createElement("button");
       eatOpt.type = "button";
-      eatOpt.className = "draw-choice-opt draw-choice-opt--default";
+      eatOpt.className = "draw-choice-opt";
       eatOpt.innerHTML = `<span class="draw-choice-label">B · 吃牌</span><span class="draw-choice-tile">${ctx.eatPreview}</span>`;
       bindActionTap(eatOpt, eatDiscard);
       opts.appendChild(eatOpt);
@@ -841,7 +841,10 @@ function renderMeta() {
   }
 
   if (gameState.winner !== null) {
-    if (status) status.textContent = `本局结束：${displayName(gameState.winner)} 胡牌成功。`;
+    if (status) {
+      status.classList.remove("hidden");
+      status.textContent = `本局结束：${displayName(gameState.winner)} 胡牌成功。`;
+    }
     if (playTips) {
       playTips.classList.add("hidden");
       playTips.innerHTML = "";
@@ -851,6 +854,7 @@ function renderMeta() {
     const done = cc.approved.length;
     const need = cc.confirmerIndices.length;
     if (status) {
+      status.classList.remove("hidden");
       status.textContent = `${displayName(cc.claimer)} 声明胡牌，等待确认（${done}/${need}）。`;
     }
     if (playTips) {
@@ -858,11 +862,9 @@ function renderMeta() {
       playTips.innerHTML = "";
     }
   } else {
-    const phaseText = gameState.phase === "draw" ? "摸牌阶段" : "出牌阶段";
-    const who = displayName(gameState.turn);
-    const discardHint = getDiscardHintHtml();
     if (status) {
-      status.innerHTML = `当前回合：<span class="turn-badge turn-badge--meta">${who}</span>（${phaseText}）${discardHint}`;
+      status.textContent = "";
+      status.classList.add("hidden");
     }
     if (playTips) {
       playTips.classList.remove("hidden");
