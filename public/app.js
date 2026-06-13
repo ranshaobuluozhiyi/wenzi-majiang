@@ -217,28 +217,38 @@ function clearDragState() {
 }
 
 function findReorderTargetAt(playerIdx, clientX, clientY) {
-  const el = document.elementFromPoint(clientX, clientY);
-  if (!el) return null;
-  let node = el;
-  for (let depth = 0; depth < 16 && node; depth++, node = node.parentElement) {
-    const ds = node.dataset;
-    if (!ds || ds.reorderPlayer === undefined) continue;
-    const p = parseInt(ds.reorderPlayer, 10);
-    if (p !== playerIdx) continue;
-    const r = parseInt(ds.reorderRow, 10);
-    if (Number.isNaN(r)) continue;
-    if (ds.reorderCol !== undefined) {
-      const c = parseInt(ds.reorderCol, 10);
-      if (Number.isNaN(c)) continue;
-      const rect = node.getBoundingClientRect();
-      const insertAfter = clientX > rect.left + rect.width / 2;
-      return { kind: "tile", row: r, col: c, insertAfter };
-    }
-    if (node.classList?.contains("hand-row")) {
-      return { kind: "row", row: r };
-    }
+  const playerEl = $(`player${playerIdx}`);
+  if (!playerEl) return null;
+  const rowEls = playerEl.querySelectorAll(".rows .hand-row");
+  for (const rowEl of rowEls) {
+    const rect = rowEl.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) continue;
+    const row = parseInt(rowEl.dataset.reorderRow, 10);
+    if (Number.isNaN(row)) continue;
+    return resolveDropInRow(rowEl, row, clientX, clientY);
   }
   return null;
+}
+
+function resolveDropInRow(rowEl, row, clientX, clientY) {
+  const btns = rowEl.querySelectorAll("button.tile");
+  if (btns.length === 0) return { kind: "row", row };
+
+  const lastIdx = btns.length - 1;
+  const lastRect = btns[lastIdx].getBoundingClientRect();
+  // 行尾空白区：进入该行且位于最后一张字右侧，即视为追加到行末
+  if (clientX > lastRect.left + lastRect.width / 2) {
+    return { kind: "tile", row, col: lastIdx, insertAfter: true };
+  }
+
+  for (let i = 0; i < btns.length; i++) {
+    const rect = btns[i].getBoundingClientRect();
+    if (clientY < rect.top - 2 || clientY > rect.bottom + 2) continue;
+    const mid = rect.left + rect.width / 2;
+    return { kind: "tile", row, col: i, insertAfter: clientX > mid };
+  }
+
+  return { kind: "tile", row, col: lastIdx, insertAfter: true };
 }
 
 function updatePointerHighlight(playerIdx, clientX, clientY) {
@@ -569,9 +579,16 @@ function renderActions() {
     gameState.deck.length > 0
   );
 
+  const awaitingCard =
+    canAct(gameState.turn) && gameState.phase === "draw" && getHandCount(active) === 13;
+  drawBtn.classList.toggle("action-hint-pulse", awaitingCard && !drawBtn.disabled);
+  drawBtn.classList.toggle("action-hint-pulse--muted", awaitingCard && drawBtn.disabled);
+
   eatBtn.textContent = gameState.lastDiscard ? `吃牌（${gameState.lastDiscard.tile}）` : "吃牌";
   eatBtn.disabled = !canEat;
   eatBtn.title = n >= 3 ? "仅「上一手弃牌者的下家」可吃" : "";
+  eatBtn.classList.toggle("action-hint-pulse", awaitingCard && !eatBtn.disabled);
+  eatBtn.classList.toggle("action-hint-pulse--muted", awaitingCard && eatBtn.disabled);
 
   huBtn.disabled = !(
     canAct(gameState.turn) &&
@@ -604,14 +621,8 @@ function renderPlayers() {
 
     const label = displayName(idx);
     const turnBadge = active ? ` <span class="turn-badge">当前回合</span>` : "";
-    const ruleTips =
-      idx === mySlot
-        ? `<div class="play-tip">每回合须先摸牌或吃牌获得一张（手牌共 14 张），再点击一张字牌打出。</div>
-      <div class="play-tip">胡牌：本回合摸牌或吃牌后（手牌 14 张）可直接点「声明胡牌」，<strong>无需先出牌</strong>。</div>`
-        : "";
     const header = `<h3>${label}${turnBadge}</h3>
       <div>手牌：${getHandCount(player)} 张</div>
-      ${ruleTips}
       <div class="row-tip">8 条横排可自由拖拽分类</div>`;
 
     el.className = "player";
@@ -748,14 +759,23 @@ function renderClaimModal() {
 function renderMeta() {
   const status = $("status");
   const deckCount = $("deckCount");
+  const playTips = $("playTips");
   const lastDiscard = $("lastDiscard");
   if (!gameState) {
     if (status) status.textContent = "";
+    if (playTips) {
+      playTips.classList.add("hidden");
+      playTips.innerHTML = "";
+    }
     return;
   }
 
   if (gameState.winner !== null) {
     if (status) status.textContent = `本局结束：${displayName(gameState.winner)} 胡牌成功。`;
+    if (playTips) {
+      playTips.classList.add("hidden");
+      playTips.innerHTML = "";
+    }
   } else if (gameState.claim) {
     const cc = gameState.claim;
     const done = cc.approved.length;
@@ -763,11 +783,20 @@ function renderMeta() {
     if (status) {
       status.textContent = `${displayName(cc.claimer)} 声明胡牌，等待确认（${done}/${need}）。`;
     }
+    if (playTips) {
+      playTips.classList.add("hidden");
+      playTips.innerHTML = "";
+    }
   } else {
     const phaseText = gameState.phase === "draw" ? "摸牌阶段" : "出牌阶段";
     const who = displayName(gameState.turn);
     if (status) {
       status.innerHTML = `当前回合：<span class="turn-badge turn-badge--meta">${who}</span>（${phaseText}）`;
+    }
+    if (playTips) {
+      playTips.classList.remove("hidden");
+      playTips.innerHTML = `<div class="play-tip">每回合须先摸牌或吃牌获得一张（手牌共 14 张），再点击一张字牌打出。</div>
+        <div class="play-tip">胡牌：本回合摸牌或吃牌后（手牌 14 张）可直接点「声明胡牌」，<strong>无需先出牌</strong>。</div>`;
     }
   }
 

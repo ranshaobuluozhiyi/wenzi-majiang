@@ -23,9 +23,19 @@ body {
 
 .meta {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.meta-line {
+  display: flex;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+}
+
+.play-tips {
+  width: 100%;
 }
 
 .actions {
@@ -51,11 +61,11 @@ body {
   border: 1px solid #dbe4ef;
   border-radius: 10px;
   padding: 12px;
-  background: #fff;
+  background: #e5e7eb;
 }
 
 .player.player--me {
-  background: #e5e7eb;
+  background: #fff;
 }
 
 .player.active {
@@ -86,11 +96,11 @@ body {
   font-size: 15px;
   font-weight: 600;
   border: 2px solid #94a3b8;
-  background: #fff;
+  background: #e5e7eb;
 }
 
 .player-view-btn--me {
-  background: #e5e7eb;
+  background: #fff;
   border-color: #9ca3af;
 }
 
@@ -254,6 +264,36 @@ body {
 .play-tip strong {
   color: #1d4ed8;
   font-weight: 700;
+}
+
+button.action-hint-pulse {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+  animation: action-hint-pulse 1.6s ease-in-out infinite;
+}
+
+button.action-hint-pulse--muted {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+  animation: action-hint-pulse-muted 1.6s ease-in-out infinite;
+}
+
+@keyframes action-hint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.55);
+  }
+}
+
+@keyframes action-hint-pulse-muted {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+  }
 }
 
 .setup-bar {
