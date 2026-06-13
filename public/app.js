@@ -103,7 +103,18 @@ function persistSession() {
 }
 
 function syncSessionChrome() {
-  document.body.classList.toggle("in-session", !!(roomId && mySlot !== null));
+  const inSession = !!(roomId && mySlot !== null);
+  const mobile = isMobileLayout();
+  document.body.classList.toggle("in-session", inSession);
+
+  const pageTitle = $("pageTitle");
+  const topBar = $("topBar");
+  if (mobile && inSession) {
+    pageTitle?.classList.add("hidden");
+    topBar?.classList.add("hidden");
+  } else {
+    pageTitle?.classList.remove("hidden");
+  }
 }
 
 function clearSession() {
@@ -582,6 +593,7 @@ function updateChrome() {
     const badge = $("roomBadge");
     if (badge && roomId) badge.textContent = `房间 ${roomId}`;
   }
+  syncSessionChrome();
 }
 
 function renderActions() {
@@ -885,6 +897,7 @@ function render() {
   renderActions();
   renderPlayers();
   renderClaimModal();
+  syncSessionChrome();
 }
 
 function showWaitingUI() {
@@ -906,6 +919,7 @@ function showWaitingUI() {
     const badge = $("roomBadge");
     if (badge && roomId) badge.textContent = `房间 ${roomId}`;
   }
+  syncSessionChrome();
 }
 
 function wireLobby() {
@@ -999,6 +1013,7 @@ let resizeTimer = null;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
+    syncSessionChrome();
     if (gameState) {
       syncMobileViewToTurn();
       render();

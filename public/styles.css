@@ -36,7 +36,7 @@ body {
 
 .play-tips {
   width: 100%;
-  text-align: center;
+  text-align: left;
 }
 
 .actions {
@@ -44,7 +44,7 @@ body {
   gap: 8px;
   margin-bottom: 16px;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .actions--draw-choice {
@@ -192,6 +192,15 @@ body {
 
   body.in-session .container {
     padding-top: 8px;
+  }
+
+  body.in-session .play-tips,
+  body.in-session .play-tip {
+    text-align: center;
+  }
+
+  body.in-session .actions {
+    justify-content: center;
   }
 
   .meta {
@@ -348,7 +357,7 @@ body {
   font-size: 12px;
   line-height: 1.5;
   margin-top: 2px;
-  text-align: center;
+  text-align: left;
 }
 
 .turn-badge--meta {
