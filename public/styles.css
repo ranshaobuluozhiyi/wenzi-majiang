@@ -88,7 +88,15 @@ body {
 .draw-choice-opt--default {
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-  animation: action-hint-pulse 1.6s ease-in-out infinite;
+}
+
+.discard-hint {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  vertical-align: middle;
 }
 
 .draw-choice-label {

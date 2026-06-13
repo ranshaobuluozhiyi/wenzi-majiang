@@ -401,34 +401,8 @@ function syncPlayersGrid() {
 function renderPlayerViewToggle() {
   const bar = $("playerViewToggle");
   if (!bar) return;
-  const mobile = isMobileLayout();
-  if (!mobile || !gameState) {
-    bar.classList.add("hidden");
-    bar.innerHTML = "";
-    return;
-  }
-
-  bar.classList.remove("hidden");
+  bar.classList.add("hidden");
   bar.innerHTML = "";
-  const visible = getMobileVisibleSlot();
-
-  getMobileToggleOrder().forEach((idx) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "player-view-btn";
-    btn.setAttribute("role", "tab");
-    btn.setAttribute("aria-selected", idx === visible ? "true" : "false");
-    const isMe = idx === mySlot;
-    if (isMe) btn.classList.add("player-view-btn--me");
-    if (idx === visible) btn.classList.add("player-view-btn--active");
-    btn.textContent = isMe ? "我的手牌" : `看${displayName(idx)}`;
-    btn.onclick = () => {
-      mobileFocusedSlot = idx;
-      lastSyncedTurn = null;
-      renderPlayers();
-    };
-    bar.appendChild(btn);
-  });
 }
 
 function canReorderHand(playerIndex) {
@@ -583,6 +557,11 @@ function handleDrop(playerIndex, rowIndex, tileIndex, dropToContainer, insertAft
   emitAction({ type: "REORDER", handRows: newRows });
 }
 
+function getDiscardHintHtml() {
+  if (!gameState || gameState.phase !== "discard" || gameState.claim || gameState.winner !== null) return "";
+  return ` <span class="discard-hint">请整理后单击要出的牌</span>`;
+}
+
 function updateChrome() {
   const lobby = $("lobby");
   const gameBoard = $("gameBoard");
@@ -594,10 +573,6 @@ function updateChrome() {
     if (waiting) waiting.classList.add("hidden");
     if (gameBoard) gameBoard.classList.remove("hidden");
     if (topBar) topBar.classList.remove("hidden");
-    if (mySlot !== null && gameState.players[mySlot]) {
-      const elName = $("myRoleName");
-      if (elName) elName.textContent = "我";
-    }
     const badge = $("roomBadge");
     if (badge && roomId) badge.textContent = `房间 ${roomId}`;
   }
@@ -717,7 +692,7 @@ function renderPlayers() {
       gameState.winner === null;
 
     const label = displayName(idx);
-    const turnBadge = active ? ` <span class="turn-badge">当前回合</span>` : "";
+    const turnBadge = active ? ` <span class="turn-badge">当前回合</span>${getDiscardHintHtml()}` : "";
     const header = `<h3>${label}${turnBadge}</h3>
       <div>手牌：${getHandCount(player)} 张</div>
       <div class="row-tip">8 条横排可自由拖拽分类</div>`;
@@ -885,8 +860,9 @@ function renderMeta() {
   } else {
     const phaseText = gameState.phase === "draw" ? "摸牌阶段" : "出牌阶段";
     const who = displayName(gameState.turn);
+    const discardHint = getDiscardHintHtml();
     if (status) {
-      status.innerHTML = `当前回合：<span class="turn-badge turn-badge--meta">${who}</span>（${phaseText}）`;
+      status.innerHTML = `当前回合：<span class="turn-badge turn-badge--meta">${who}</span>（${phaseText}）${discardHint}`;
     }
     if (playTips) {
       playTips.classList.remove("hidden");
@@ -919,8 +895,6 @@ function showWaitingUI() {
   if (waiting) waiting.classList.remove("hidden");
   if (topBar && mySlot !== null) {
     topBar.classList.remove("hidden");
-    const elName = $("myRoleName");
-    if (elName) elName.textContent = "我";
     const badge = $("roomBadge");
     if (badge && roomId) badge.textContent = `房间 ${roomId}`;
   }
