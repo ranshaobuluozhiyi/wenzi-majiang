@@ -102,6 +102,10 @@ function persistSession() {
   }
 }
 
+function syncSessionChrome() {
+  document.body.classList.toggle("in-session", !!(roomId && mySlot !== null));
+}
+
 function clearSession() {
   roomId = null;
   mySlot = null;
@@ -112,6 +116,7 @@ function clearSession() {
   pendingAction = null;
   lastAutoDrawKey = null;
   persistSession();
+  syncSessionChrome();
 }
 
 function applyRoomJoin(res) {
@@ -132,6 +137,7 @@ function applyRoomJoin(res) {
     showWaitingUI();
   }
   flushPendingAction();
+  syncSessionChrome();
 }
 
 function tryRejoinRoom() {
@@ -919,6 +925,7 @@ function wireLobby() {
       persistSession();
       showWaitingUI();
       $("lobbyHint")?.classList.add("hidden");
+      syncSessionChrome();
     });
   });
 
