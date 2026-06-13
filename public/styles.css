@@ -235,35 +235,18 @@ body {
   vertical-align: middle;
   letter-spacing: 0.04em;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
-  animation: turn-badge-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes turn-badge-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
-  }
-  50% {
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.45);
-  }
 }
 
 .play-tip {
-  color: #334155;
-  font-size: 13px;
-  line-height: 1.45;
-  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 2px;
 }
 
 .turn-badge--meta {
   font-size: 12px;
   padding: 2px 10px;
-  animation: none;
-}
-
-.play-tip strong {
-  color: #1d4ed8;
-  font-weight: 700;
 }
 
 button.action-hint-pulse {

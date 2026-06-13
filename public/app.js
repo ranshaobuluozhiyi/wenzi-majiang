@@ -758,9 +758,7 @@ function renderClaimModal() {
 
 function renderMeta() {
   const status = $("status");
-  const deckCount = $("deckCount");
   const playTips = $("playTips");
-  const lastDiscard = $("lastDiscard");
   if (!gameState) {
     if (status) status.textContent = "";
     if (playTips) {
@@ -795,17 +793,8 @@ function renderMeta() {
     }
     if (playTips) {
       playTips.classList.remove("hidden");
-      playTips.innerHTML = `<div class="play-tip">每回合须先摸牌或吃牌获得一张（手牌共 14 张），再点击一张字牌打出。</div>
-        <div class="play-tip">胡牌：本回合摸牌或吃牌后（手牌 14 张）可直接点「声明胡牌」，<strong>无需先出牌</strong>。</div>`;
-    }
-  }
-
-  if (deckCount) deckCount.textContent = `牌堆剩余：${gameState.deck.length}`;
-  if (lastDiscard) {
-    if (gameState.lastDiscard) {
-      lastDiscard.textContent = `最近弃牌：${gameState.lastDiscard.tile}（来自 ${displayName(gameState.lastDiscard.from)}）`;
-    } else {
-      lastDiscard.textContent = "最近弃牌：暂无";
+      playTips.innerHTML =
+        `<div class="play-tip">每回合获得一张牌（摸或吃）变为 14 张，然后 出一张牌 或 声明胡牌。</div>`;
     }
   }
 }
