@@ -8,6 +8,8 @@ const socket = io({ transports: ["websocket", "polling"] });
 let gameState = null;
 let mySlot = null;
 let roomId = null;
+let roomReady = false;
+let pendingAction = null;
 /** 手机端当前查看的玩家座位；回合变化时自动跟随当前操作者 */
 let mobileFocusedSlot = null;
 let lastSyncedTurn = null;
@@ -104,6 +106,8 @@ function clearSession() {
   mobileFocusedSlot = null;
   lastSyncedTurn = null;
   gameState = null;
+  roomReady = false;
+  pendingAction = null;
   persistSession();
 }
 
@@ -113,6 +117,7 @@ function applyRoomJoin(res) {
   mobileFocusedSlot = null;
   lastSyncedTurn = null;
   gameState = res.state || null;
+  roomReady = true;
   persistSession();
   $("lobbyHint")?.classList.add("hidden");
   if ($("roomCodeInput") && roomId) $("roomCodeInput").value = roomId;
@@ -123,6 +128,7 @@ function applyRoomJoin(res) {
   } else {
     showWaitingUI();
   }
+  flushPendingAction();
 }
 
 function tryRejoinRoom() {
@@ -166,7 +172,35 @@ function toast(msg) {
   toast._t = setTimeout(() => el.classList.remove("show"), 2600);
 }
 
+/** 手机端在 DOM 重绘后 click 可能丢失，用 pointerup 更可靠 */
+function bindActionTap(btn, handler) {
+  let lastAt = 0;
+  const run = () => {
+    if (btn.disabled) return;
+    const now = Date.now();
+    if (now - lastAt < 280) return;
+    lastAt = now;
+    handler();
+  };
+  btn.addEventListener("pointerup", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    run();
+  });
+}
+
+function flushPendingAction() {
+  if (!pendingAction || !roomReady) return;
+  const action = pendingAction;
+  pendingAction = null;
+  socket.emit("action", { action });
+}
+
 function emitAction(action) {
+  if (!roomReady) {
+    pendingAction = action;
+    tryRejoinRoom();
+    return;
+  }
   socket.emit("action", { action });
 }
 
@@ -465,21 +499,57 @@ function updateChrome() {
 function renderActions() {
   const el = $("turnActions");
   if (!el || !gameState) return;
-  el.innerHTML = "";
 
   const isMe = (i) => i === mySlot;
   const canAct = (i) => isMe(i) && i === gameState.turn;
 
   if (gameState.winner !== null) {
-    const btn = document.createElement("button");
-    btn.className = "primary";
-    btn.textContent = "开新局";
-    btn.onclick = requestNewGame;
-    el.appendChild(btn);
+    if (el.dataset.mode !== "winner") {
+      el.innerHTML = "";
+      el.dataset.mode = "winner";
+      const btn = document.createElement("button");
+      btn.className = "primary";
+      btn.textContent = "开新局";
+      bindActionTap(btn, requestNewGame);
+      el.appendChild(btn);
+    }
     return;
   }
 
-  if (gameState.claim) return;
+  if (gameState.claim) {
+    if (el.dataset.mode !== "claim") {
+      el.innerHTML = "";
+      el.dataset.mode = "claim";
+    }
+    return;
+  }
+
+  if (el.dataset.mode !== "turn") {
+    el.innerHTML = "";
+    el.dataset.mode = "turn";
+    const drawBtn = document.createElement("button");
+    drawBtn.dataset.role = "draw";
+    drawBtn.textContent = "摸牌";
+    bindActionTap(drawBtn, drawTile);
+    el.appendChild(drawBtn);
+
+    const eatBtn = document.createElement("button");
+    eatBtn.dataset.role = "eat";
+    bindActionTap(eatBtn, eatDiscard);
+    el.appendChild(eatBtn);
+
+    const huBtn = document.createElement("button");
+    huBtn.dataset.role = "hu";
+    huBtn.className = "warn";
+    huBtn.textContent = "声明胡牌";
+    bindActionTap(huBtn, declareHu);
+    el.appendChild(huBtn);
+  }
+
+  const drawBtn = el.querySelector('[data-role="draw"]');
+  const eatBtn = el.querySelector('[data-role="eat"]');
+  const huBtn = el.querySelector('[data-role="hu"]');
+  if (!drawBtn || !eatBtn || !huBtn) return;
 
   const active = gameState.players[gameState.turn];
   const n = gameState.players.length;
@@ -492,34 +562,22 @@ function renderActions() {
     gameState.turn === xiajiaTurn &&
     getHandCount(active) === 13;
 
-  const drawBtn = document.createElement("button");
-  drawBtn.textContent = "摸牌";
   drawBtn.disabled = !(
     canAct(gameState.turn) &&
     gameState.phase === "draw" &&
     getHandCount(active) === 13 &&
     gameState.deck.length > 0
   );
-  drawBtn.onclick = drawTile;
-  el.appendChild(drawBtn);
 
-  const eatBtn = document.createElement("button");
   eatBtn.textContent = gameState.lastDiscard ? `吃牌（${gameState.lastDiscard.tile}）` : "吃牌";
   eatBtn.disabled = !canEat;
   eatBtn.title = n >= 3 ? "仅「上一手弃牌者的下家」可吃" : "";
-  eatBtn.onclick = eatDiscard;
-  el.appendChild(eatBtn);
 
-  const huBtn = document.createElement("button");
-  huBtn.className = "warn";
-  huBtn.textContent = "声明胡牌";
   huBtn.disabled = !(
     canAct(gameState.turn) &&
     gameState.phase === "discard" &&
     getHandCount(active) === 14
   );
-  huBtn.onclick = declareHu;
-  el.appendChild(huBtn);
 }
 
 function renderPlayers() {
@@ -545,8 +603,15 @@ function renderPlayers() {
       gameState.winner === null;
 
     const label = displayName(idx);
-    const header = `<h3>${label}${active ? "（当前回合）" : ""}</h3>
+    const turnBadge = active ? ` <span class="turn-badge">当前回合</span>` : "";
+    const ruleTips =
+      idx === mySlot
+        ? `<div class="play-tip">每回合须先摸牌或吃牌获得一张（手牌共 14 张），再点击一张字牌打出。</div>
+      <div class="play-tip">胡牌：本回合摸牌或吃牌后（手牌 14 张）可直接点「声明胡牌」，<strong>无需先出牌</strong>。</div>`
+        : "";
+    const header = `<h3>${label}${turnBadge}</h3>
       <div>手牌：${getHandCount(player)} 张</div>
+      ${ruleTips}
       <div class="row-tip">8 条横排可自由拖拽分类</div>`;
 
     el.className = "player";
@@ -690,15 +755,20 @@ function renderMeta() {
   }
 
   if (gameState.winner !== null) {
-    status.textContent = `本局结束：${displayName(gameState.winner)} 胡牌成功。`;
+    if (status) status.textContent = `本局结束：${displayName(gameState.winner)} 胡牌成功。`;
   } else if (gameState.claim) {
     const cc = gameState.claim;
     const done = cc.approved.length;
     const need = cc.confirmerIndices.length;
-    status.textContent = `${displayName(cc.claimer)} 声明胡牌，等待确认（${done}/${need}）。`;
+    if (status) {
+      status.textContent = `${displayName(cc.claimer)} 声明胡牌，等待确认（${done}/${need}）。`;
+    }
   } else {
     const phaseText = gameState.phase === "draw" ? "摸牌阶段" : "出牌阶段";
-    status.textContent = `当前：${displayName(gameState.turn)}（${phaseText}）`;
+    const who = displayName(gameState.turn);
+    if (status) {
+      status.innerHTML = `当前回合：<span class="turn-badge turn-badge--meta">${who}</span>（${phaseText}）`;
+    }
   }
 
   if (deckCount) deckCount.textContent = `牌堆剩余：${gameState.deck.length}`;
@@ -754,6 +824,7 @@ function wireLobby() {
       mobileFocusedSlot = null;
       lastSyncedTurn = null;
       gameState = null;
+      roomReady = true;
       persistSession();
       showWaitingUI();
       $("lobbyHint")?.classList.add("hidden");
@@ -803,6 +874,7 @@ socket.on("playerLeft", ({ slot }) => {
 });
 
 socket.on("disconnect", () => {
+  roomReady = false;
   if (roomId) toast("连接已断开，正在尝试恢复…");
 });
 

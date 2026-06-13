@@ -161,7 +161,10 @@ io.on("connection", (socket) => {
   socket.on("action", ({ action }) => {
     const roomId = socket.data.roomId;
     const slot = socket.data.slot;
-    if (roomId === undefined || slot === undefined) return;
+    if (roomId === undefined || slot === undefined) {
+      socket.emit("actionError", { message: "未加入房间，请刷新或重新加入" });
+      return;
+    }
     const room = rooms.get(roomId);
     if (!room || !room.gameState) return;
 
