@@ -34,10 +34,7 @@ function findJoinableSlot(room) {
 }
 
 function genRoomId() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let s = "";
-  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
-  return s;
+  return String(Math.floor(Math.random() * 1000)).padStart(3, "0");
 }
 
 io.on("connection", (socket) => {

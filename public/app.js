@@ -957,9 +957,9 @@ function wireLobby() {
   });
 
   $("btnJoinRoom")?.addEventListener("click", () => {
-    const code = ($("roomCodeInput")?.value || "").trim().toUpperCase();
-    if (code.length < 4) {
-      toast("请输入房间号");
+    const code = ($("roomCodeInput")?.value || "").trim();
+    if (!/^\d{3}$/.test(code)) {
+      toast("请输入3位数字房间号");
       return;
     }
     socket.emit("joinRoom", { roomId: code }, (res) => {
@@ -1008,7 +1008,7 @@ socket.on("connect", () => {
   const params = new URLSearchParams(location.search);
   const join = params.get("join");
   if (join && mySlot === null) {
-    socket.emit("joinRoom", { roomId: join.trim().toUpperCase() }, (res) => {
+    socket.emit("joinRoom", { roomId: join.trim() }, (res) => {
       if (!res || !res.ok) {
         toast(res?.error || "加入失败");
         return;

@@ -24,7 +24,7 @@
         <button type="button" class="primary" id="btnCreateRoom">创建房间</button>
       </div>
       <div class="lobby-row">
-        <label>房间号 <input type="text" id="roomCodeInput" maxlength="6" placeholder="6位" autocomplete="off" /></label>
+        <label>房间号 <input type="text" id="roomCodeInput" maxlength="3" inputmode="numeric" pattern="[0-9]{3}" placeholder="3位数字" autocomplete="off" /></label>
         <button type="button" id="btnJoinRoom">加入房间</button>
       </div>
       <p id="lobbyHint" class="setup-hint">创建房间后把链接或房间号发给好友；人满后自动发牌开局。</p>
