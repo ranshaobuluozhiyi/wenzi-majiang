@@ -8,8 +8,12 @@ const socket = io({ transports: ["websocket", "polling"] });
 let gameState = null;
 let mySlot = null;
 let roomId = null;
-/** 手机端当前查看的玩家座位；null 表示默认看自己 */
+/** 手机端当前查看的玩家座位；回合变化时自动跟随当前操作者 */
 let mobileFocusedSlot = null;
+let lastSyncedTurn = null;
+
+const SESSION_ROOM_KEY = "wenzi-majiang-room";
+const SESSION_SLOT_KEY = "wenzi-majiang-slot";
 
 const MOBILE_BREAKPOINT = "(max-width: 768px)";
 
@@ -51,15 +55,91 @@ function displayName(playerIdx) {
 }
 
 function getMobileVisibleSlot() {
+  if (!gameState) return mySlot ?? 0;
   if (
     mobileFocusedSlot !== null &&
-    gameState &&
     mobileFocusedSlot >= 0 &&
     mobileFocusedSlot < gameState.playerCount
   ) {
     return mobileFocusedSlot;
   }
-  return mySlot ?? 0;
+  return getMobileAutoFocusSlot();
+}
+
+/** 手机端默认显示：正常回合跟 turn，胡牌确认跟声明者 */
+function getMobileAutoFocusSlot() {
+  if (!gameState) return mySlot ?? 0;
+  if (gameState.claim) return gameState.claim.claimer;
+  if (gameState.winner !== null) return gameState.winner;
+  return gameState.turn;
+}
+
+function syncMobileViewToTurn() {
+  if (!isMobileLayout() || !gameState) return;
+  const focus = getMobileAutoFocusSlot();
+  const turnKey = gameState.claim
+    ? `claim:${gameState.claim.claimer}:${gameState.claim.approved.length}`
+    : gameState.winner !== null
+      ? `win:${gameState.winner}`
+      : `turn:${gameState.turn}`;
+  if (turnKey !== lastSyncedTurn) {
+    mobileFocusedSlot = focus;
+    lastSyncedTurn = turnKey;
+  }
+}
+
+function persistSession() {
+  if (roomId && mySlot !== null) {
+    sessionStorage.setItem(SESSION_ROOM_KEY, roomId);
+    sessionStorage.setItem(SESSION_SLOT_KEY, String(mySlot));
+  } else {
+    sessionStorage.removeItem(SESSION_ROOM_KEY);
+    sessionStorage.removeItem(SESSION_SLOT_KEY);
+  }
+}
+
+function clearSession() {
+  roomId = null;
+  mySlot = null;
+  mobileFocusedSlot = null;
+  lastSyncedTurn = null;
+  gameState = null;
+  persistSession();
+}
+
+function applyRoomJoin(res) {
+  roomId = res.roomId;
+  mySlot = res.slot;
+  mobileFocusedSlot = null;
+  lastSyncedTurn = null;
+  gameState = res.state || null;
+  persistSession();
+  $("lobbyHint")?.classList.add("hidden");
+  if ($("roomCodeInput") && roomId) $("roomCodeInput").value = roomId;
+  if (gameState) {
+    syncMobileViewToTurn();
+    updateChrome();
+    render();
+  } else {
+    showWaitingUI();
+  }
+}
+
+function tryRejoinRoom() {
+  const savedRoom = sessionStorage.getItem(SESSION_ROOM_KEY);
+  const savedSlot = sessionStorage.getItem(SESSION_SLOT_KEY);
+  const targetRoom = roomId || savedRoom;
+  const targetSlot = mySlot ?? (savedSlot !== null ? parseInt(savedSlot, 10) : null);
+  if (!targetRoom || targetSlot === null || Number.isNaN(targetSlot)) return;
+
+  socket.emit("rejoinRoom", { roomId: targetRoom, slot: targetSlot }, (res) => {
+    if (!res || !res.ok) {
+      clearSession();
+      if (res?.error) toast(res.error);
+      return;
+    }
+    applyRoomJoin(res);
+  });
 }
 
 /** 桌面端：「我」始终在左，其余按座位号 */
@@ -297,6 +377,7 @@ function renderPlayerViewToggle() {
     btn.textContent = isMe ? "我的手牌" : `看${displayName(idx)}`;
     btn.onclick = () => {
       mobileFocusedSlot = idx;
+      lastSyncedTurn = null;
       renderPlayers();
     };
     bar.appendChild(btn);
@@ -671,7 +752,9 @@ function wireLobby() {
       roomId = res.roomId;
       mySlot = res.slot;
       mobileFocusedSlot = null;
+      lastSyncedTurn = null;
       gameState = null;
+      persistSession();
       showWaitingUI();
       $("lobbyHint")?.classList.add("hidden");
     });
@@ -688,17 +771,7 @@ function wireLobby() {
         toast(res?.error || "加入失败");
         return;
       }
-      roomId = res.roomId;
-      mySlot = res.slot;
-      mobileFocusedSlot = null;
-      gameState = res.state || null;
-      $("lobbyHint")?.classList.add("hidden");
-      if (gameState) {
-        updateChrome();
-        render();
-      } else {
-        showWaitingUI();
-      }
+      applyRoomJoin(res);
     });
   });
 
@@ -716,6 +789,7 @@ function wireLobby() {
 
 socket.on("state", (s) => {
   gameState = s;
+  syncMobileViewToTurn();
   updateChrome();
   render();
 });
@@ -728,6 +802,10 @@ socket.on("playerLeft", ({ slot }) => {
   toast(`座位 ${slot} 的玩家已断开，本局可能无法正常继续`);
 });
 
+socket.on("disconnect", () => {
+  if (roomId) toast("连接已断开，正在尝试恢复…");
+});
+
 socket.on("connect", () => {
   const params = new URLSearchParams(location.search);
   const join = params.get("join");
@@ -737,20 +815,11 @@ socket.on("connect", () => {
         toast(res?.error || "加入失败");
         return;
       }
-      roomId = res.roomId;
-      mySlot = res.slot;
-      mobileFocusedSlot = null;
-      gameState = res.state || null;
-      $("lobbyHint")?.classList.add("hidden");
-      if ($("roomCodeInput")) $("roomCodeInput").value = roomId || "";
-      if (gameState) {
-        updateChrome();
-        render();
-      } else {
-        showWaitingUI();
-      }
+      applyRoomJoin(res);
     });
+    return;
   }
+  tryRejoinRoom();
 });
 
 wireLobby();
@@ -759,6 +828,9 @@ let resizeTimer = null;
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (gameState) render();
+    if (gameState) {
+      syncMobileViewToTurn();
+      render();
+    }
   }, 120);
 });

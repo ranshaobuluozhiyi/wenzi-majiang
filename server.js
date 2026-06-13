@@ -17,6 +17,22 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const rooms = new Map();
 
+const DISCONNECT_RESERVE_MS = 90_000;
+
+function isSlotReserved(room, idx) {
+  const until = room.reservedSlots?.[idx];
+  if (!until) return false;
+  if (Date.now() > until) {
+    delete room.reservedSlots[idx];
+    return false;
+  }
+  return true;
+}
+
+function findJoinableSlot(room) {
+  return room.slots.findIndex((s, i) => s === null && !isSlotReserved(room, i));
+}
+
 function genRoomId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
@@ -32,6 +48,7 @@ io.on("connection", (socket) => {
     const room = {
       playerCount: pc,
       slots: Array(pc).fill(null),
+      reservedSlots: {},
       gameState: null,
       started: false,
     };
@@ -66,12 +83,13 @@ io.on("connection", (socket) => {
       if (typeof cb === "function") cb({ ok: false, error: "对局已开始，无法加入" });
       return;
     }
-    const idx = room.slots.findIndex((s) => s === null);
+    const idx = findJoinableSlot(room);
     if (idx === -1) {
       if (typeof cb === "function") cb({ ok: false, error: "房间已满" });
       return;
     }
     room.slots[idx] = socket.id;
+    delete room.reservedSlots[idx];
     socket.join(roomId);
     socket.data.roomId = roomId;
     socket.data.slot = idx;
@@ -88,6 +106,52 @@ io.on("connection", (socket) => {
         ok: true,
         roomId,
         slot: idx,
+        state: room.gameState,
+        playerCount: room.playerCount,
+      });
+    }
+  });
+
+  socket.on("rejoinRoom", ({ roomId: rawId, slot }, cb) => {
+    const roomId = String(rawId || "")
+      .trim()
+      .toUpperCase();
+    const room = rooms.get(roomId);
+    if (!room) {
+      if (typeof cb === "function") cb({ ok: false, error: "房间不存在" });
+      return;
+    }
+    if (typeof slot !== "number" || slot < 0 || slot >= room.playerCount) {
+      if (typeof cb === "function") cb({ ok: false, error: "座位无效" });
+      return;
+    }
+    const occupant = room.slots[slot];
+    if (occupant !== null && occupant !== socket.id) {
+      const other = io.sockets.sockets.get(occupant);
+      if (other?.connected) {
+        if (typeof cb === "function") cb({ ok: false, error: "该座位已被占用" });
+        return;
+      }
+      room.slots[slot] = null;
+    }
+    room.slots[slot] = socket.id;
+    delete room.reservedSlots[slot];
+    socket.join(roomId);
+    socket.data.roomId = roomId;
+    socket.data.slot = slot;
+
+    const allIn = room.slots.every((s) => s !== null);
+    if (allIn && !room.started) {
+      room.gameState = newGame(room.playerCount);
+      room.started = true;
+      io.to(roomId).emit("state", room.gameState);
+    }
+
+    if (typeof cb === "function") {
+      cb({
+        ok: true,
+        roomId,
+        slot,
         state: room.gameState,
         playerCount: room.playerCount,
       });
@@ -118,6 +182,7 @@ io.on("connection", (socket) => {
     if (!room) return;
     if (room.slots[slot] === socket.id) {
       room.slots[slot] = null;
+      room.reservedSlots[slot] = Date.now() + DISCONNECT_RESERVE_MS;
     }
     io.to(roomId).emit("playerLeft", { slot });
   });
